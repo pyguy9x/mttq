@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPI MTTQ</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js" defer></script>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+
+<div id="loginGate" class="gate open">
+  <form class="gate-card" onsubmit="event.preventDefault();loginWithToken(document.getElementById('tokenInput').value)">
+    <h1>KPI MTTQ</h1>
+    <p>Nhập token cán bộ hoặc Admin để tiếp tục.</p>
+    <input id="tokenInput" type="password" placeholder="Nhập token..." autocomplete="off">
+    <button class="btn primary" type="submit">Đăng nhập</button>
+  </form>
+</div>
+
+<div id="app" class="app">
+  <header class="topbar">
+    <div><h1>KPI MTTQ</h1><p id="mttqKpiSyncText">Chưa tải dữ liệu.</p></div>
+    <div class="top-actions">
+      <span id="userInfo" class="user"></span>
+      <button class="btn" onclick="loadMTTQKPIData(true)">Cập nhật</button>
+      <button class="btn primary" onclick="openMTTQKPIEdit()">+ Nhập nhiệm vụ</button>
+      <button class="btn" onclick="logoutUser()">Đăng xuất</button>
+    </div>
+  </header>
+
+  <section class="cards">
+    <div class="card link" onclick="openMTTQKPIDrill('total')"><span>Tổng</span><b id="mttqKpiTotal">0</b></div>
+    <div class="card done link" onclick="openMTTQKPIDrill('done')"><span>Hoàn thành</span><b id="mttqKpiDone">0</b></div>
+    <div class="card proc link" onclick="openMTTQKPIDrill('processing')"><span>Đang TH</span><b id="mttqKpiProcessing">0</b></div>
+    <div class="card over link" onclick="openMTTQKPIDrill('overdue')"><span>Quá hạn</span><b id="mttqKpiOverdue">0</b></div>
+    <div class="card score"><span>Điểm</span><b id="mttqKpiScore">0</b></div>
+    <div class="card proc link" onclick="openMTTQKPIDrill('soon3')"><span>Sắp 3 ngày</span><b id="mttqKpiSoon3">0</b></div>
+    <div class="card proc link" onclick="openMTTQKPIDrill('soon7')"><span>Sắp 7 ngày</span><b id="mttqKpiSoon7">0</b></div>
+  </section>
+
+  <section class="chart-card">
+    <b>Hiệu suất theo cán bộ</b><small>Click cột để drill-down</small>
+    <div class="chart-wrap"><canvas id="mttqKpiPerformanceChart"></canvas></div>
+  </section>
+
+  <section class="filters">
+    <input id="mttqKpiSearch" type="search" placeholder="Tìm nhiệm vụ, cán bộ, sản phẩm..." oninput="renderMTTQKPITable()">
+    <select id="mttqKpiPersonFilter" onchange="renderMTTQKPITable()"><option value="all">Tất cả cán bộ</option></select>
+    <select id="mttqKpiMonthFilter" onchange="renderMTTQKPITable()"><option value="all">Tất cả tháng</option></select>
+    <select id="mttqKpiYearFilter" onchange="renderMTTQKPITable()"><option value="all">Tất cả năm</option></select>
+    <select id="mttqKpiStatusFilter" onchange="renderMTTQKPITable()">
+      <option value="all">Tất cả trạng thái</option><option value="done">Hoàn thành</option>
+      <option value="processing">Đang thực hiện</option><option value="overdue">Quá hạn</option>
+      <option value="failed">Không hoàn thành</option>
+    </select>
+    <button class="btn" onclick="resetMTTQKPIFilters()">Xóa lọc</button>
+  </section>
+
+  <section class="table-card">
+    <div class="table-head"><b><span id="mttqKpiShownCount">0</span> nhiệm vụ</b></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>STT</th><th>Cán bộ</th><th>Nhiệm vụ</th><th>Người giao</th><th>Hạn</th><th>Kết quả</th><th>Điểm</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+      <tbody id="mttqKpiTableBody"></tbody>
+    </table><div id="mttqKpiEmpty" class="empty" style="display:none">Chưa có dữ liệu. Chạy supabase/schema.sql rồi nhập nhiệm vụ.</div></div>
+  </section>
+</div>
+
+<div id="mttqKpiEditModal" class="modal">
+  <div class="dialog">
+    <div class="dlg-head"><h3 id="mttqKpiEditTitle">Thêm nhiệm vụ KPI MTTQ</h3>
+      <div><button class="btn primary" onclick="saveMTTQKPITask()">Lưu</button>
+      <button class="btn" onclick="closeMTTQKPIEdit()">Đóng</button></div></div>
+    <div class="grid">
+      <label>Cán bộ<select id="mttqKpiPerson"></select></label>
+      <label class="wide">Tên nhiệm vụ<textarea id="mttqKpiTaskName" rows="2" list="mttqTaskCatalogList"></textarea><datalist id="mttqTaskCatalogList"></datalist></label>
+      <label>Người giao<input id="mttqKpiAssigner"></label>
+      <label>Hạn (dd/mm/yyyy)<span class="date-wrap"><input id="mttqKpiDeadline" placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10" autocomplete="off"><input id="mttqKpiDeadlinePicker" type="date" title="Chọn ngày"></span></label>
+      <label>Kết quả<select id="mttqKpiOutcome"><option value="">Chưa hoàn thành</option><option>Trước hạn</option><option>Đúng hạn</option><option>Quá hạn</option><option>Không hoàn thành</option></select></label>
+      <label>Số lần sai sót<input id="mttqKpiQualityErrors" type="number" min="0" step="1" value="0"></label>
+      <label class="wide">Sản phẩm<textarea id="mttqKpiProduct" rows="2"></textarea></label>
+      <label>Cấp độ<select id="mttqKpiLevel"><option value="1">Cấp độ 1</option><option value="2">Cấp độ 2</option><option value="3">Cấp độ 3</option><option value="4">Cấp độ 4</option></select></label>
+      <label>Hệ số quy đổi<input id="mttqKpiFactor" type="number" min="0" step="0.01" value="1"></label>
+      <label>Trục KPI<input id="mttqKpiAxis" placeholder="Trục 1"></label>
+      <label class="wide">Ghi chú<textarea id="mttqKpiNote" rows="2"></textarea></label>
+    </div>
+  </div>
+</div>
+
+<div id="mttqKpiDrillModal" class="modal">
+  <div class="dialog wide">
+    <div class="dlg-head"><h3 id="mttqKpiDrillTitle">Chi tiết</h3><span class="count"><b id="mttqKpiDrillCount">0</b> nhiệm vụ</span>
+      <button class="btn" onclick="closeMTTQKPIDrill()">Đóng</button></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>STT</th><th>Cán bộ</th><th>Nhiệm vụ</th><th>Hạn</th><th>Kết quả</th><th>Điểm</th><th>Trạng thái</th><th></th></tr></thead>
+      <tbody id="mttqKpiDrillBody"></tbody>
+    </table><div id="mttqKpiDrillEmpty" class="empty" style="display:none">Không có nhiệm vụ phù hợp.</div></div>
+  </div>
+</div>
+
+<div id="mttqKpiDetailModal" class="modal">
+  <div class="dialog">
+    <div class="dlg-head"><h3 id="mttqKpiDetailTitle">Chi tiết nhiệm vụ</h3>
+      <button class="btn" onclick="closeMTTQKPIDetail()">Đóng</button></div>
+    <div id="mttqKpiDetailBody" class="detail-body"></div>
+  </div>
+</div>
+</body>
+</html>
